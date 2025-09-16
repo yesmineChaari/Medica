@@ -1,5 +1,3 @@
-# run_chatbot.py
-
 from appointment_agent.graph import app_graph
 from dotenv import load_dotenv
 load_dotenv()

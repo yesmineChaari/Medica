@@ -19,7 +19,6 @@ graph.add_node("create_appointment", create_appointment)
 graph.set_entry_point("router")
 graph.add_node("router", lambda s: s)        # passthrough — routing is in the condition
 graph.add_conditional_edges("router", route) # route() returns the node name as a string
-
 graph.add_conditional_edges(
     "greet_user",
     lambda s: "collect_details" if s.get("last_user_intent") == "APPOINTMENT_DETAILS" else END

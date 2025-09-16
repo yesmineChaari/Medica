@@ -1,22 +1,15 @@
 # audio_utils.py
+from functools import lru_cache
 import sounddevice as sd
 import numpy as np
 import scipy.io.wavfile as wav
 import tempfile
 from faster_whisper import WhisperModel
-# --- START OF BAND-AID PATCH ---
-import torch
-import transformers.pytorch_utils
-# Recreate the missing function that the new transformers deleted
-def isin_mps_friendly(elements, test_elements):
-    return torch.isin(elements, test_elements)
-# Inject it directly into transformers before TTS loads
-transformers.pytorch_utils.isin_mps_friendly = isin_mps_friendly
-# --- END OF BAND-AID PATCH ---
 
-from TTS.api import TTS
+@lru_cache(maxsize=1)
+def get_whisper_model():
+    return WhisperModel(model_size_or_path="small", device="cpu", compute_type="int8")
 
-_whisper_model = WhisperModel(model_size_or_path="small", device="cpu", compute_type="int8")
 def record_audio(duration=5, fs=16000):
     """
     Record audio from microphone for a given duration and sample rate.
@@ -36,7 +29,8 @@ def transcribe_audio(audio_path):
     """
     Transcribe the audio file using faster-whisper and return the text.
     """
-    segments, info = _whisper_model.transcribe(audio_path, beam_size=2)
+    whisper_model = get_whisper_model()
+    segments, info = whisper_model.transcribe(audio_path, beam_size=2)
     
     transcription = " ".join([segment.text for segment in segments])
     return transcription, info.language

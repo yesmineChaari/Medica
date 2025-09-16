@@ -66,12 +66,12 @@ def greet_user(state: dict) -> dict:
 
     logger.debug(f" After setdefault, user_messages: {state.get('user_messages', 'NOT_FOUND')}")
 
-    # If we're already awaiting user response, don't process further
+    # If awaiting user response, don't process further
     if state.get("awaiting_user_response"):
         logger.debug("Already awaiting user response, returning")
         return state
 
-    # Check if we have user messages to process
+    # Check if there's user messages to process
     if not state.get("user_messages"):
         # No user messages yet, this is the initial state
         logger.debug("No user messages, setting awaiting_user_response=True")
@@ -134,7 +134,6 @@ def greet_user(state: dict) -> dict:
             logger.debug("DEBUG: User provided details, moving to collect_details")
             # If user provided details, move to collect_details node
             state["awaiting_user_response"] = False
-            # Don't add a bot message here, let collect_details handle it
         elif classification == "OTHER":
             logger.debug("DEBUG: Adding other response")
             state["bot_messages"].append(

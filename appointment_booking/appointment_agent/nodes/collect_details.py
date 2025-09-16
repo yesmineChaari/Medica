@@ -111,10 +111,8 @@ def collect_details(state: dict) -> dict:
 
     # Check if this message is just an email (common case)
     if "@" in user_message and "." in user_message and " " not in user_message.strip():
-        # This looks like a standalone email
         logger.debug("Detected standalone email")
         email_candidate = user_message.strip()
-        # Check if we now have all details
         if is_valid_email(email_candidate):
             state["email"] = email_candidate
             if state.get("date") and state.get("time") and state.get("email"):
@@ -149,7 +147,7 @@ def collect_details(state: dict) -> dict:
             raw_text = str(raw_text)
         logger.debug(f"LLM response: {raw_text}")
 
-        # Extract JSON payload from the model output (it may include extra text).
+        # Extract JSON payload from the model output
         match = re.search(r"\{.*\}", raw_text, re.DOTALL)
         json_text = match.group(0) if match else raw_text
         details_dict = json.loads(json_text)

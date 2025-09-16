@@ -57,7 +57,7 @@ langfuse_handler = load_langfuse()
 
 tts_model, tts_speaker = load_tts()
 
-st.set_page_config(page_title="MEDICA", page_icon="🩺")
+st.set_page_config(page_title="MEDICA")
 import logging
 logging.basicConfig(level=logging.WARNING)  
 st.title("MEDICA - Your AI Medical Assistant")
@@ -65,7 +65,7 @@ st.markdown("Ask a medical question and get AI-powered responses based on truste
 
 # --- Mode selection ---
 if "chat_mode" not in st.session_state:
-    st.session_state.chat_mode = "qa"  # 'qa' or 'appointment'
+    st.session_state.chat_mode = "qa" 
 
 st.sidebar.title("Chat Mode")
 mode = st.sidebar.radio("Choose chat mode:", ("Medical Q&A", "Appointment Booking"))
@@ -92,7 +92,7 @@ if st.session_state.chat_mode == "qa":
 
     st.text_input("Type your question:", key="text_input", on_change=handle_text_submit)
     # Audio input section (inside the QA block)
-    if st.button("🎙️ Ask by Voice"):
+    if st.button("Ask by Voice"):
         with st.spinner("Recording your question..."):
             audio_path = record_audio(duration=5)
             transcription, _ = transcribe_audio(audio_path)
@@ -104,10 +104,9 @@ if st.session_state.chat_mode == "qa":
     st.markdown("---")
     for speaker, text in st.session_state.chat_history:
         if speaker == "user":
-            st.markdown(f"🧑‍💬 **You:** {text}")
+            st.markdown(f"**You:** {text}")
         else:
-            #st.markdown(f"🤖 **Bot:** {text}")
-            st.markdown(f"🤖 **Bot:** {text}")
+            st.markdown(f"**Bot:** {text}")
             audio_path = synthesize_speech(text, tts_model, tts_speaker)
             with open(audio_path, "rb") as f:
                 audio_data = f.read()
@@ -162,7 +161,7 @@ else:
         st.session_state.appt_text_input = ""  # Clear input
 
     st.text_input("Type your message:", key="appt_text_input", on_change=handle_appt_text_submit)
-    if st.button("🎙️ Speak to Book"):
+    if st.button("Speak to Book"):
         with st.spinner("Recording your message..."):
             audio_path = record_audio(duration=5)
             transcription, _ = transcribe_audio(audio_path)
@@ -187,9 +186,9 @@ else:
     st.markdown("---")
     for speaker, text in st.session_state.appt_chat_history:
         if speaker == "user":
-            st.markdown(f"🧑‍💬 **You:** {text}")
+            st.markdown(f"**You:** {text}")
         else:
-            st.markdown(f"🤖 **Bot:** {text}")
+            st.markdown(f"**Bot:** {text}")
             audio_path = synthesize_speech(text, tts_model, tts_speaker)
             with open(audio_path, "rb") as f:
                 audio_data = f.read()

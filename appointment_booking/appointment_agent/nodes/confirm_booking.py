@@ -30,7 +30,7 @@ def build_client():
         return DAVClient(RADICALE_URL, username=USERNAME, password=PASSWORD)
     return DAVClient(RADICALE_URL)
 
-TIMEZONE = "Europe/Paris"  # Adjust your timezone
+TIMEZONE = "Europe/Paris"  # Adjust timezone
 
 def confirm_booking(state: dict) -> dict:
     logger.debug("confirm_booking function called")

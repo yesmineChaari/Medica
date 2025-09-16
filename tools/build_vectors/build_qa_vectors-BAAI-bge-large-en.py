@@ -1,17 +1,21 @@
 import pandas as pd
 from langchain_huggingface import HuggingFaceEmbeddings
+from qdrant_client.http.models import VectorParams, Distance
+from langchain.schema import Document
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import PointStruct
 from tqdm import tqdm
 import time
 from typing import List
 import logging
+import os
 
 # Configuration
-csv_file = "combined_medical_QAs.csv"
+script_dir = os.path.dirname(os.path.abspath(__file__))
+csv_file = os.path.join(script_dir, "..", "..", "dataset", "combined_medical_QAs.csv")
 chunk_size = 100
-QDRANT_COLLECTION_NAME = "medical_qa_specific"
-EMBEDDING_MODEL_NAME = "BAAI/bge-large-en" 
+QDRANT_COLLECTION_NAME = "medical_qa_bge_large_en"
+EMBEDDING_MODEL_NAME = "BAAI/bge-large-en"
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -25,20 +29,17 @@ def initialize_qdrant():
     if QDRANT_COLLECTION_NAME not in [c.name for c in qdrant.get_collections().collections]:
         qdrant.create_collection(
         collection_name=QDRANT_COLLECTION_NAME,
-        vectors_config={"size": 1024, "distance": "Cosine"},
-    )
+        vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
+        )
     return qdrant
 
 def initialize_embeddings():
     """Initialize embedding model with batching support"""
     return HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL_NAME,
-        model_kwargs={'device': 'cpu'}, 
-        encode_kwargs = {
-    'batch_size': 8,
-    'normalize_embeddings': True
-}
-
+        model_kwargs={'device': 'cpu'},  # or 'cuda' if available
+        encode_kwargs={    'batch_size': 8,
+        'normalize_embeddings': True}  # Adjust based on  hardware
     )
 
 def embed_texts(embeddings_model, texts: List[str]) -> List[List[float]]:
@@ -49,21 +50,32 @@ def embed_texts(embeddings_model, texts: List[str]) -> List[List[float]]:
         logger.error(f"Embedding failed: {e}")
         raise
 
+
 def upsert_chunk(qdrant, embeddings_model, df_chunk: pd.DataFrame, offset: int):
     """Embed and upsert one chunk of the dataframe"""
     try:
-        questions = df_chunk["question"].tolist()
-        embeddings = embed_texts(embeddings_model, questions)
+        docs = [
+            Document(
+                page_content=str(row.question), 
+                metadata={"answer": str(row.answer),
+            "tags": [tag.strip() for tag in str(row.tags).split(",")]}
+            )
+            for row in df_chunk.itertuples()
+        ]
+
+        embeddings = embed_texts(embeddings_model, [doc.page_content for doc in docs])
 
         points = []
-        for i, (embedding, row) in enumerate(zip(embeddings, df_chunk.itertuples())):
+        for i, (embedding, doc) in enumerate(zip(embeddings, docs)):
             point = PointStruct(
                 id=offset + i,
                 vector=embedding,
                 payload={
-                    "question": str(row.question),
-                    "answer": str(row.answer),
-                    "tags": str(row.tags)
+                    "page_content": doc.page_content,
+                    "metadata": { 
+            "answer": doc.metadata["answer"],
+            "tags": doc.metadata["tags"]
+                    }
                 }
             )
             points.append(point)
@@ -77,6 +89,7 @@ def upsert_chunk(qdrant, embeddings_model, df_chunk: pd.DataFrame, offset: int):
     except Exception as e:
         logger.error(f"Failed to process chunk: {e}")
         raise
+
 
 def main():
     qdrant = initialize_qdrant()
@@ -100,15 +113,15 @@ def main():
                 
             except Exception as e:
                 logger.error(f"Error processing chunk at offset {offset}: {e}")
-                # Optionally: add retry logic here
+
                 continue
                 
     except Exception as e:
         logger.error(f"Fatal error: {e}")
-        traceback.print_exc()
+
     finally:
-        logger.info(f"Successfully uploaded {total_processed} records to Qdrant!")
-        # Close resources if needed
+        logger.info(f"Upload finished. Total records processed: {total_processed}")
+
 
 if __name__ == "__main__":
     main()

@@ -9,8 +9,6 @@ from email.mime.text import MIMEText
 from pathlib import Path
 
 
-
-# Resolve path to .env in the current script's directory
 env_path = Path(__file__).resolve().parents[3] / ".env"
 load_dotenv(dotenv_path=env_path)
 print("Loading environment variables from:", env_path)
@@ -30,8 +28,8 @@ USERNAME = get_env("RADICALE_USERNAME", "CALDAV_USERNAME", "USERNAME")
 PASSWORD = get_env("RADICALE_PASSWORD", "CALDAV_PASSWORD", "PASSWORD")
 SMTP_SERVER = os.getenv("SMTP_SERVER")
 smtp_port_str = os.getenv("SMTP_PORT")
-# Set to GMT+1
-TIMEZONE = "Europe/Lagos"
+
+TIMEZONE = "Europe/Paris"
 
 
 if smtp_port_str is None:

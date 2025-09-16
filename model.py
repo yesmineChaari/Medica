@@ -1,4 +1,3 @@
-# model.py
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import OllamaLLM as Ollama
 from langchain_core.prompts import PromptTemplate
@@ -9,17 +8,12 @@ try:
 except Exception:
     CallbackHandler = None
 
-# Configuration (vectorstore and retriever are passed from streamlit_app.py)
-
-
-# 1. Connect to Qdrant
-
 EMBEDDING_MODEL_NAME = "BAAI/bge-large-en"
 QDRANT_COLLECTION_NAME = "medical_qa_bge_large_en"
 QDRANT_URL = "http://localhost:6333"   
 QDRANT_API_KEY = None 
 
-# 4. Prompt Template
+#Prompt Template
 rag_prompt = PromptTemplate(
     input_variables=["context", "question"],
     template=textwrap.dedent("""
@@ -68,7 +62,7 @@ def generate_safe_answer(user_question: str, retriever, llm, langfuse_handler=No
 
     if not docs:
         return "I'm sorry, I couldn't find relevant information. Please consult a medical professional."
-    print("\n📥 Retrieved Documents:")
+    print("\n Retrieved Documents:")
     for i, doc in enumerate(docs):
         print(f"--- Document {i+1} ---")
         print(f"Question: {doc.page_content}")
@@ -78,7 +72,7 @@ def generate_safe_answer(user_question: str, retriever, llm, langfuse_handler=No
         f"- Q: {doc.page_content}\n  A: {doc.metadata.get('answer', '')}" for doc in docs
     ])
     prompt = rag_prompt.format(context=context_snippets, question=user_question)
-    print("\n📄 Final Context Passed to Model:\n", context_snippets)
-    print("\n🧠 Final Prompt:\n", prompt)
+    print("\n Final Context Passed to Model:\n", context_snippets)
+    print("\n Final Prompt:\n", prompt)
     config = {"callbacks": [langfuse_handler]} if langfuse_handler else {}
     return llm.invoke(prompt, config=config)
