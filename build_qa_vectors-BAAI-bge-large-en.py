@@ -1,6 +1,6 @@
 import pandas as pd
-from langchain.embeddings import HuggingFaceEmbeddings
-
+from langchain_huggingface import HuggingFaceEmbeddings
+from qdrant_client.http.models import VectorParams, Distance
 from langchain.schema import Document
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import PointStruct
@@ -8,6 +8,7 @@ from tqdm import tqdm
 import time
 from typing import List
 import logging
+
 
 # Configuration
 csv_file = "combined_medical_QAs.csv"
@@ -25,9 +26,9 @@ def initialize_qdrant():
     
     # Create collection if it doesn't exist
     if QDRANT_COLLECTION_NAME not in [c.name for c in qdrant.get_collections().collections]:
-        qdrant.recreate_collection(
-            collection_name=QDRANT_COLLECTION_NAME,
-            vectors_config={"size": 1024, "distance": "Cosine"},
+        qdrant.create_collection(
+        collection_name=QDRANT_COLLECTION_NAME,
+        vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
         )
     return qdrant
 
@@ -118,7 +119,7 @@ def main():
         logger.error(f"Fatal error: {e}")
 
     finally:
-        logger.info(f"Successfully uploaded {total_processed} records to Qdrant!")
+        logger.info(f"Upload finished. Total records processed: {total_processed}")
         # Close resources if needed
 
 if __name__ == "__main__":

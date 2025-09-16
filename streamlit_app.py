@@ -1,10 +1,66 @@
 import streamlit as st
 from model import generate_safe_answer
 from audio_utils import record_audio, transcribe_audio, synthesize_speech
-
+from TTS.api import TTS
+import os
 from appointment_booking.appointment_agent.graph import app_graph
-st.set_page_config(page_title="MEDIMIND", page_icon="🩺")
-st.title("MEDIMIND - Your AI Medical Assistant")
+from dotenv import load_dotenv
+try:
+    from langfuse.langchain import CallbackHandler
+except Exception:
+    CallbackHandler = None
+
+load_dotenv()
+@st.cache_resource
+def load_rag_pipeline():
+    from langchain_huggingface import HuggingFaceEmbeddings
+    from langchain_qdrant import Qdrant
+    from langchain_ollama import OllamaLLM as Ollama
+
+    embedding_model = HuggingFaceEmbeddings(model_name="BAAI/bge-large-en")
+    vectorstore = Qdrant.from_existing_collection(
+        collection_name="medical_qa_bge_large_en",
+        embedding=embedding_model,
+        url="http://localhost:6333",
+        api_key=None,
+    )
+    llm = Ollama(model="llama3", temperature=0.3)
+    retriever = vectorstore.as_retriever(
+        search_type="similarity_score_threshold",
+        search_kwargs={"k": 5, "score_threshold": 0.7}
+    )
+    return retriever, llm
+
+retriever, rag_llm = load_rag_pipeline()
+@st.cache_resource
+def load_tts():
+    model = TTS(model_name="tts_models/multilingual/multi-dataset/your_tts", gpu=False)
+    speaker = model.speakers[0]
+    return model, speaker
+
+
+@st.cache_resource
+def load_langfuse():
+    if CallbackHandler is None:
+        return None
+    kwargs = {
+        "public_key": os.getenv("LANGFUSE_PUBLIC_KEY"),
+        "secret_key": os.getenv("LANGFUSE_SECRET_KEY"),
+        "host": os.getenv("LANGFUSE_HOST", "http://localhost:3000"),
+    }
+    try:
+        return CallbackHandler(**kwargs)
+    except TypeError:
+        return CallbackHandler()
+
+langfuse_handler = load_langfuse()
+
+tts_model, tts_speaker = load_tts()
+
+st.set_page_config(page_title="MEDICA", page_icon="🩺")
+import logging
+logging.basicConfig(level=logging.WARNING)  
+st.title("MEDICA - Your AI Medical Assistant")
 st.markdown("Ask a medical question and get AI-powered responses based on trusted data.")
 
 # --- Mode selection ---
@@ -30,7 +86,7 @@ if st.session_state.chat_mode == "qa":
         if user_input.strip() == "":
             return
         st.session_state.chat_history.append(("user", user_input))
-        response = generate_safe_answer(user_input)
+        response = generate_safe_answer(user_input, retriever, rag_llm, langfuse_handler)
         st.session_state.chat_history.append(("bot", response))
         st.session_state.text_input = ""  # Clear the input safely here
 
@@ -42,7 +98,7 @@ if st.session_state.chat_mode == "qa":
             transcription, _ = transcribe_audio(audio_path)
             st.success("Transcription complete!")
             st.session_state.chat_history.append(("user", transcription))
-            response = generate_safe_answer(transcription)
+            response = generate_safe_answer(transcription, retriever, rag_llm, langfuse_handler)
             st.session_state.chat_history.append(("bot", response))
 
     st.markdown("---")
@@ -52,9 +108,11 @@ if st.session_state.chat_mode == "qa":
         else:
             #st.markdown(f"🤖 **Bot:** {text}")
             st.markdown(f"🤖 **Bot:** {text}")
-            audio_path = synthesize_speech(text)
-            with open(audio_path, "rb") as audio_file:
-                st.audio(audio_file.read(), format="audio/wav")
+            audio_path = synthesize_speech(text, tts_model, tts_speaker)
+            with open(audio_path, "rb") as f:
+                audio_data = f.read()
+            os.unlink(audio_path)   # delete temp file immediately after reading
+            st.audio(audio_data, format="audio/wav")
 
 # --- Appointment Booking Chatbot ---
 else:
@@ -91,7 +149,10 @@ else:
         st.session_state.appt_state["user_messages"].append(user_input)
         st.session_state.appt_state["awaiting_user_response"] = False
         # Call the appointment booking graph
-        result = app_graph.invoke(st.session_state.appt_state)
+        config = {"configurable": {"thread_id": "streamlit-session"}}
+        if langfuse_handler:
+            config["callbacks"] = [langfuse_handler]
+        result = app_graph.invoke(st.session_state.appt_state, config=config)
         st.session_state.appt_state = result
         # Add bot messages to chat history
         for msg in result.get("bot_messages", []):
@@ -111,7 +172,10 @@ else:
             st.session_state.appt_state["awaiting_user_response"] = False
 
             # Call the appointment booking graph
-            result = app_graph.invoke(st.session_state.appt_state)
+            config = {"configurable": {"thread_id": "streamlit-session"}}
+            if langfuse_handler:
+                config["callbacks"] = [langfuse_handler]
+            result = app_graph.invoke(st.session_state.appt_state, config=config)
             st.session_state.appt_state = result
 
             # Add bot messages to chat history
@@ -126,9 +190,11 @@ else:
             st.markdown(f"🧑‍💬 **You:** {text}")
         else:
             st.markdown(f"🤖 **Bot:** {text}")
-            audio_path = synthesize_speech(text)
-            with open(audio_path, "rb") as audio_file:
-                st.audio(audio_file.read(), format="audio/wav")
+            audio_path = synthesize_speech(text, tts_model, tts_speaker)
+            with open(audio_path, "rb") as f:
+                audio_data = f.read()
+            os.unlink(audio_path)   # delete temp file immediately after reading
+            st.audio(audio_data, format="audio/wav")
     # Show confirmation if appointment is booked
     appt = st.session_state.appt_state
     if appt.get("confirmed") and appt.get("date") and appt.get("time"):

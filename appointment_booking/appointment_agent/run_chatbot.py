@@ -1,7 +1,8 @@
 # run_chatbot.py
 
 from appointment_agent.graph import app_graph
-
+from dotenv import load_dotenv
+load_dotenv()
 
 def main():
     # Initialize state as a simple dict
@@ -44,18 +45,11 @@ def main():
         print(f"DEBUG: State before graph invoke: {state}")
 
         try:
-            # Determine which node to start from based on current state
-            if not (state.get("date") and state.get("time") and state.get("email")):
-                # If any detail is missing, always go to collect_details
-                print("DEBUG: Missing details, going to collect_details")
-                state["last_user_intent"] = "APPOINTMENT_DETAILS"
-            else:
-                print("DEBUG: All details present, going to confirm_booking")
-                # We'll handle this in the graph flow
             
             # Invoke graph
             print("DEBUG: About to invoke app_graph")
-            result = app_graph.invoke(state)
+            config = {"configurable": {"thread_id": "cli-session"}}
+            result = app_graph.invoke(state, config=config)
             print(f"DEBUG: Graph result: {result}")
             
             # Check if result is None (graph error)

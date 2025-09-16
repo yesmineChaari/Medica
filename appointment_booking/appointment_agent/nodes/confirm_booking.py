@@ -1,26 +1,40 @@
 from datetime import datetime, timedelta
 from caldav import DAVClient
 import os
-from dotenv import load_dotenv
 from pathlib import Path
+import logging
+from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 #  load variables from .env
 env_path = Path(__file__).resolve().parents[3] / ".env"
 load_dotenv(dotenv_path=env_path)
-print("Loading environment variables from:", env_path)
-print(".env contents : ", open(env_path).read())
-load_dotenv(dotenv_path=env_path)
+
+def get_env(*keys):
+    for key in keys:
+        value = os.getenv(key)
+        if value and value.lower() not in ("none", "null"):
+            return value
+    return None
 
 # Environment variables
-RADICALE_URL = os.getenv("RADICALE_URL")
-USERNAME = os.getenv("RADICALE_USERNAME")
-PASSWORD = os.getenv("RADICALE_PASSWORD")
+RADICALE_URL = get_env("RADICALE_URL", "CALDAV_URL", "CALENDAR_URL")
+USERNAME = get_env("RADICALE_USERNAME", "CALDAV_USERNAME", "USERNAME")
+PASSWORD = get_env("RADICALE_PASSWORD", "CALDAV_PASSWORD", "PASSWORD")
+
+def build_client():
+    if not RADICALE_URL:
+        return None
+    if USERNAME and PASSWORD:
+        return DAVClient(RADICALE_URL, username=USERNAME, password=PASSWORD)
+    return DAVClient(RADICALE_URL)
 
 TIMEZONE = "Europe/Paris"  # Adjust your timezone
 
 def confirm_booking(state: dict) -> dict:
-    print("DEBUG: confirm_booking function called")
-    
+    logger.debug("confirm_booking function called")
+
     # Ensure all required keys exist
     state.setdefault("bot_messages", [])
     state.setdefault("date", None)
@@ -36,11 +50,17 @@ def confirm_booking(state: dict) -> dict:
         state["awaiting_user_response"] = True
         return state
 
-    print(f"DEBUG: Checking availability for {date} at {time}")
+    logger.debug(f"Checking availability for {date} at {time}")
 
     try:
         # Connect to Radicale server
-        client = DAVClient(RADICALE_URL, username=USERNAME, password=PASSWORD)
+        client = build_client()
+        if client is None:
+            state["bot_messages"].append(
+                "Radicale is not configured. Please set RADICALE_URL in .env."
+            )
+            state["awaiting_user_response"] = True
+            return state
         principal = client.principal()
 
         calendars = principal.calendars()
@@ -107,9 +127,16 @@ def confirm_booking(state: dict) -> dict:
         return state
 
     except Exception as e:
-        print(f"Error in confirm_booking: {e}")
-        state["bot_messages"].append(
-            f"An error occurred while checking availability: {str(e)}"
-        )
+        logger.error(f"Error in confirm_booking: {e}")
+        error_text = str(e)
+        if "Unauthorized" in error_text:
+            state["bot_messages"].append(
+                "Authorization failed. Please check RADICALE_USERNAME/RADICALE_PASSWORD "
+                "(or start Radicale with --auth-type none)."
+            )
+        else:
+            state["bot_messages"].append(
+                f"An error occurred while checking availability: {error_text}"
+            )
         state["awaiting_user_response"] = True
         return state

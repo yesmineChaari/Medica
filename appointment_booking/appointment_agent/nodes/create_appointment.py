@@ -17,10 +17,17 @@ print("Loading environment variables from:", env_path)
 print(".env contents : ", open(env_path).read())
 load_dotenv(dotenv_path=env_path)
 
+def get_env(*keys):
+    for key in keys:
+        value = os.getenv(key)
+        if value and value.lower() not in ("none", "null"):
+            return value
+    return None
+
 # Environment variables
-RADICALE_URL = os.getenv("RADICALE_URL")
-USERNAME = os.getenv("RADICALE_USERNAME")
-PASSWORD = os.getenv("RADICALE_PASSWORD")
+RADICALE_URL = get_env("RADICALE_URL", "CALDAV_URL", "CALENDAR_URL")
+USERNAME = get_env("RADICALE_USERNAME", "CALDAV_USERNAME", "USERNAME")
+PASSWORD = get_env("RADICALE_PASSWORD", "CALDAV_PASSWORD", "PASSWORD")
 SMTP_SERVER = os.getenv("SMTP_SERVER")
 smtp_port_str = os.getenv("SMTP_PORT")
 # Set to GMT+1
@@ -56,11 +63,21 @@ def create_appointment(state: dict) -> dict:
         state["awaiting_user_response"] = True
         return state
 
+    if not RADICALE_URL:
+        state["bot_messages"].append(
+            "Radicale is not configured. Please set RADICALE_URL in .env."
+        )
+        state["awaiting_user_response"] = True
+        return state
+
     print(f"DEBUG: Creating appointment for {date} at {time} for {email}")
 
     try:
         # Connect to Radicale
-        client = DAVClient(RADICALE_URL, username=USERNAME, password=PASSWORD)
+        if USERNAME and PASSWORD:
+            client = DAVClient(RADICALE_URL, username=USERNAME, password=PASSWORD)
+        else:
+            client = DAVClient(RADICALE_URL)
         principal = client.principal()
 
         calendars = principal.calendars()

@@ -1,9 +1,17 @@
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
-from validate_email import validate_email as validate_email_lib   # [validate_email]
+from pydantic import BaseModel, Field
+from typing import Optional
 import json
 import re
 from datetime import datetime, timedelta
+import logging
+logger = logging.getLogger(__name__)
+class AppointmentDetails(BaseModel):
+    date:  Optional[str] = Field(description="Date in YYYY-MM-DD format")
+    time:  Optional[str] = Field(description="Time in HH:MM 24h format")
+    email: Optional[str] = Field(description="Email address")
+
 
 llm = OllamaLLM(model="llama3")
 TODAY = datetime.now().strftime("%Y-%m-%d")
@@ -56,34 +64,14 @@ def is_valid_time(time_str):
     except Exception:
         return False
 
-def is_valid_email(email_str):
+def is_valid_email(email_str: str) -> bool:
     if not email_str:
         return False
-    # Quick regex check first
-    regex = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-    if not re.match(regex, email_str):
-        return False
-    # [validate_email] Deep validation (DNS+SMTP)
-    try:
-        result = validate_email_lib(
-            email_address=email_str,
-            check_format=True,
-            check_dns=True,
-            check_smtp=True,
-            smtp_timeout=10,
-            dns_timeout=10,
-            smtp_helo_host="localhost",
-            smtp_from_address="noreply@yourdomain.com"
-        )
-        return result
-    except Exception as e:
-        print(f"[validate_email] Error validating email '{email_str}': {e}")
-        return False
-
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email_str))
 # ---------- Main Function ----------
 
 def collect_details(state: dict) -> dict:
-    print("DEBUG: collect_details function called")
+    logger.debug("collect_details function called")
     
     past = False
     # Ensure all required keys exist
@@ -97,7 +85,7 @@ def collect_details(state: dict) -> dict:
     
     # If no user message, wait for input
     if not user_message:
-        print("DEBUG: No user message in collect_details")
+        logger.debug(" No user message in collect_details")
         # Ask for what we need
         missing = []
         if not state["date"]:
@@ -112,25 +100,25 @@ def collect_details(state: dict) -> dict:
         state["awaiting_user_response"] = True
         return state
 
-    print(f"DEBUG: Processing user message in collect_details: '{user_message}'")
-    print(f"DEBUG: Current state - date: {state['date']}, time: {state['time']}, email: {state['email']}")
+    logger.debug(f"Processing user message in collect_details: '{user_message}'")
+    logger.debug(f"Current state - date: {state['date']}, time: {state['time']}, email: {state['email']}")
 
     # If we already have all details, move to confirm_booking
     if state.get("date") and state.get("time") and state.get("email"):
-        print("DEBUG: All details already present, moving to confirm_booking")
+        logger.debug("All details already present, moving to confirm_booking")
         state["awaiting_user_response"] = False
         return state
 
     # Check if this message is just an email (common case)
     if "@" in user_message and "." in user_message and " " not in user_message.strip():
         # This looks like a standalone email
-        print("DEBUG: Detected standalone email")
+        logger.debug("Detected standalone email")
         email_candidate = user_message.strip()
         # Check if we now have all details
         if is_valid_email(email_candidate):
             state["email"] = email_candidate
             if state.get("date") and state.get("time") and state.get("email"):
-                print("DEBUG: All details complete with email, moving to confirm_booking")
+                logger.debug("All details complete with email, moving to confirm_booking")
             state["awaiting_user_response"] = False
         else:
             # Still need more details
@@ -145,34 +133,40 @@ def collect_details(state: dict) -> dict:
             state["awaiting_user_response"] = True
         return state
 
-    prompt = extraction_prompt.format_messages(
-        input=user_message,
-        today=TODAY
-    )
+    extraction_chain = extraction_prompt | llm
 
     try:
-        raw_response = llm.invoke(prompt)
-        
+        raw_response = extraction_chain.invoke({"input": user_message, "today": TODAY})
+
         # Handle potential None response
         if raw_response is None:
             state["bot_messages"].append("Sorry, I couldn't process your message. Please try again.")
             state["awaiting_user_response"] = True
             return state
 
-        print(f"DEBUG: LLM response: {raw_response}")
-        details = json.loads(raw_response)
-        date = details.get("date")
-        time = details.get("time")
-        email = details.get("email")
+        raw_text = raw_response.content if hasattr(raw_response, "content") else raw_response
+        if not isinstance(raw_text, str):
+            raw_text = str(raw_text)
+        logger.debug(f"LLM response: {raw_text}")
+
+        # Extract JSON payload from the model output (it may include extra text).
+        match = re.search(r"\{.*\}", raw_text, re.DOTALL)
+        json_text = match.group(0) if match else raw_text
+        details_dict = json.loads(json_text)
+        details = AppointmentDetails(**details_dict)
+
+        date = details.date if details.date else None
+        time = details.time if details.time else None
+        email = details.email if details.email else None
     except (json.JSONDecodeError, TypeError, AttributeError) as e:
-        print(f"Error parsing response: {e}")
+        logger.debug(f"Error parsing response: {e}")
         state["bot_messages"].append(
             "Sorry, I couldn't understand that. Could you please rephrase the date, time, and email?"
         )
         state["awaiting_user_response"] = True
         return state
     except Exception as e:
-        print(f"Error in collect_details: {e}")
+        logger.debug(f"Error in collect_details: {e}")
         state["bot_messages"].append("Sorry, I encountered an error. Please try again.")
         state["awaiting_user_response"] = True
         return state
@@ -185,7 +179,7 @@ def collect_details(state: dict) -> dict:
     if not state["email"] and email:
         state["email"] = email
 
-    print(f"DEBUG: After extraction - date: {state['date']}, time: {state['time']}, email: {state['email']}")
+    logger.debug(f"After extraction - date: {state['date']}, time: {state['time']}, email: {state['email']}")
 
     # Validate fields
     invalid = []
@@ -251,6 +245,6 @@ def collect_details(state: dict) -> dict:
         return state
 
     # All details valid
-    print("DEBUG: All details valid, moving to confirm_booking")
+    logger.debug("All details valid, moving to confirm_booking")
     state["awaiting_user_response"] = False
     return state
