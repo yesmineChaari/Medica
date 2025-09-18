@@ -10,22 +10,20 @@ from typing import List
 import logging
 import os
 
-# Configuration
 script_dir = os.path.dirname(os.path.abspath(__file__))
 csv_file = os.path.join(script_dir, "..", "..", "dataset", "combined_medical_QAs.csv")
 chunk_size = 100
 QDRANT_COLLECTION_NAME = "medical_qa_multilingual_e5_base"
 EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-base"
 
-# Initialize logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def initialize_qdrant():
     """Initialize Qdrant client and collection"""
     qdrant = QdrantClient(host="localhost", port=6333, timeout=60)
-    
-    # Create collection if it doesn't exist
+
     if QDRANT_COLLECTION_NAME not in [c.name for c in qdrant.get_collections().collections]:
         qdrant.recreate_collection(
             collection_name=QDRANT_COLLECTION_NAME,
@@ -33,13 +31,15 @@ def initialize_qdrant():
         )
     return qdrant
 
+
 def initialize_embeddings():
     """Initialize embedding model with batching support"""
     return HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL_NAME,
-        model_kwargs={'device': 'cpu'},  # or 'cuda' if available
-        encode_kwargs={'batch_size': 32}  # Adjust based on  hardware
+        model_kwargs={'device': 'cpu'},
+        encode_kwargs={'batch_size': 32}
     )
+
 
 def embed_texts(embeddings_model, texts: List[str]) -> List[List[float]]:
     """Embed a batch of texts using HuggingFace embeddings"""
@@ -55,9 +55,11 @@ def upsert_chunk(qdrant, embeddings_model, df_chunk: pd.DataFrame, offset: int):
     try:
         docs = [
             Document(
-                page_content=str(row.question), 
-                metadata={"answer": str(row.answer),
-            "tags": str(row.tags)}
+                page_content=str(row.question),
+                metadata={
+                    "answer": str(row.answer),
+                    "tags": str(row.tags),
+                }
             )
             for row in df_chunk.itertuples()
         ]
@@ -69,11 +71,11 @@ def upsert_chunk(qdrant, embeddings_model, df_chunk: pd.DataFrame, offset: int):
             point = PointStruct(
                 id=offset + i,
                 vector=embedding,
-                payload={  # This will become `doc.metadata` and `doc.page_content`
+                payload={
                     "page_content": doc.page_content,
-                    "metadata": {                      # LangChain looks for metadata here
-            "answer": doc.metadata["answer"],
-            "tags": doc.metadata["tags"]
+                    "metadata": {
+                        "answer": doc.metadata["answer"],
+                        "tags": doc.metadata["tags"],
                     }
                 }
             )
@@ -93,15 +95,14 @@ def upsert_chunk(qdrant, embeddings_model, df_chunk: pd.DataFrame, offset: int):
 def main():
     qdrant = initialize_qdrant()
     embeddings_model = initialize_embeddings()
-    
+
     offset = 0
     total_processed = 0
-    
+
     try:
-        # Read CSV in chunks
         for chunk in tqdm(pd.read_csv(csv_file, chunksize=chunk_size), desc="Uploading chunks"):
             start_time = time.time()
-            
+
             try:
                 upsert_chunk(qdrant, embeddings_model, chunk, offset)
                 processed = len(chunk)
@@ -109,11 +110,11 @@ def main():
                 total_processed += processed
                 elapsed = time.time() - start_time
                 logger.info(f"Chunk processed in {elapsed:.2f} seconds, total records: {offset}")
-                
+
             except Exception as e:
                 logger.error(f"Error processing chunk at offset {offset}: {e}")
                 continue
-                
+
     except Exception as e:
         logger.error(f"Fatal error: {e}")
     finally:

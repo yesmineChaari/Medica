@@ -1,9 +1,10 @@
-from appointment_agent.graph import app_graph
+from appointment_booking.appointment_agent.graph import app_graph
 from dotenv import load_dotenv
+
 load_dotenv()
 
+
 def main():
-    # Initialize state as a simple dict
     state = {
         "user_messages": [],
         "bot_messages": [],
@@ -19,7 +20,6 @@ def main():
     print("=== Appointment Chatbot ===")
     print("Type 'quit' anytime to exit.\n")
 
-    # Send initial greeting
     state["bot_messages"].append(
         "Hello! I'm here to help you book an appointment. How can I assist you today?"
     )
@@ -27,54 +27,34 @@ def main():
         print("Chatbot:", msg)
     state["bot_messages"] = []
 
-    # Main loop
     while True:
         user_input = input("\nYou: ").strip()
         if user_input.lower() == "quit":
             print("Exiting. Goodbye!")
             break
 
-        print(f"DEBUG: User input: '{user_input}'")
-        
-        # Add user message to state
         state["user_messages"].append(user_input)
         state["awaiting_user_response"] = False
-        
-        print(f"DEBUG: State before graph invoke: {state}")
 
         try:
-            
-            # Invoke graph
-            print("DEBUG: About to invoke app_graph")
             config = {"configurable": {"thread_id": "cli-session"}}
             result = app_graph.invoke(state, config=config)
-            print(f"DEBUG: Graph result: {result}")
-            
-            # Check if result is None (graph error)
+
             if result is None:
-                print("DEBUG: Graph returned None")
                 print("Chatbot: Sorry, I encountered an error. Please try again.")
                 continue
-                
-            print("DEBUG: Using result as new state")
+
             state = result
-            print(f"DEBUG: New state: {state}")
-            
+
         except Exception as e:
-            print(f"DEBUG: Exception caught: {e}")
-            import traceback
-            traceback.print_exc()
             print(f"Chatbot: Sorry, I encountered an error: {e}")
             continue
 
-        # Show bot messages
-        print("DEBUG: Showing bot messages")
         for msg in state.get("bot_messages", []):
             if msg:
                 print("Chatbot:", msg)
         state["bot_messages"] = []
 
-        # If appointment is confirmed, show summary and exit
         if state.get("confirmed") and state.get("date") and state.get("time"):
             print("\nYour appointment has been booked successfully!")
             print(f"Date: {state['date']}")

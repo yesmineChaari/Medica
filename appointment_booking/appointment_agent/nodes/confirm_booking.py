@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-#  load variables from .env
 env_path = Path(__file__).resolve().parents[3] / ".env"
 load_dotenv(dotenv_path=env_path)
 
@@ -18,7 +17,6 @@ def get_env(*keys):
             return value
     return None
 
-# Environment variables
 RADICALE_URL = get_env("RADICALE_URL", "CALDAV_URL", "CALENDAR_URL")
 USERNAME = get_env("RADICALE_USERNAME", "CALDAV_USERNAME", "USERNAME")
 PASSWORD = get_env("RADICALE_PASSWORD", "CALDAV_PASSWORD", "PASSWORD")
@@ -30,12 +28,7 @@ def build_client():
         return DAVClient(RADICALE_URL, username=USERNAME, password=PASSWORD)
     return DAVClient(RADICALE_URL)
 
-TIMEZONE = "Europe/Paris"  # Adjust timezone
-
 def confirm_booking(state: dict) -> dict:
-    logger.debug("confirm_booking function called")
-
-    # Ensure all required keys exist
     state.setdefault("bot_messages", [])
     state.setdefault("date", None)
     state.setdefault("time", None)
@@ -50,10 +43,7 @@ def confirm_booking(state: dict) -> dict:
         state["awaiting_user_response"] = True
         return state
 
-    logger.debug(f"Checking availability for {date} at {time}")
-
     try:
-        # Connect to Radicale server
         client = build_client()
         if client is None:
             state["bot_messages"].append(
@@ -72,21 +62,14 @@ def confirm_booking(state: dict) -> dict:
             return state
         calendar = calendars[0]
 
-        # Parse appointment start and end times
         appointment_start = datetime.fromisoformat(f"{date}T{time}")
         appointment_end = appointment_start + timedelta(minutes=30)
 
-        # Format as strings to match event DTSTART and DTEND format (without separators)
-        start_str = appointment_start.strftime("%Y%m%dT%H%M%S")
-        end_str = appointment_end.strftime("%Y%m%dT%H%M%S")
-
-        # Fetch all events for the day
         day_start = appointment_start.replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start + timedelta(days=1)
 
         events = calendar.date_search(day_start, day_end)
 
-        # Check if any event overlaps
         slot_taken = False
         for event in events:
             raw = event.data
@@ -118,7 +101,6 @@ def confirm_booking(state: dict) -> dict:
             state["awaiting_user_response"] = True
             return state
 
-        # Slot is free
         state["confirmed"] = True
         state["awaiting_user_response"] = False
         state["bot_messages"].append(
@@ -127,7 +109,7 @@ def confirm_booking(state: dict) -> dict:
         return state
 
     except Exception as e:
-        logger.error(f"Error in confirm_booking: {e}")
+        logger.exception("Error in confirm_booking")
         error_text = str(e)
         if "Unauthorized" in error_text:
             state["bot_messages"].append(

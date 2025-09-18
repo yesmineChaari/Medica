@@ -6,17 +6,18 @@ import json
 import re
 from datetime import datetime, timedelta
 import logging
+
 logger = logging.getLogger(__name__)
+
+
 class AppointmentDetails(BaseModel):
-    date:  Optional[str] = Field(description="Date in YYYY-MM-DD format")
-    time:  Optional[str] = Field(description="Time in HH:MM 24h format")
+    date: Optional[str] = Field(description="Date in YYYY-MM-DD format")
+    time: Optional[str] = Field(description="Time in HH:MM 24h format")
     email: Optional[str] = Field(description="Email address")
 
 
 llm = OllamaLLM(model="llama3")
-TODAY = datetime.now().strftime("%Y-%m-%d")
 
-# Prompt to extract appointment details in JSON
 extraction_prompt = ChatPromptTemplate.from_messages([
     (
         "system",
@@ -41,7 +42,6 @@ extraction_prompt = ChatPromptTemplate.from_messages([
     )
 ])
 
-# ---------- Validators ----------
 
 def validate_date(date_str):
     """Returns 'valid', 'past', 'too_far', or 'invalid'."""
@@ -57,6 +57,7 @@ def validate_date(date_str):
     except Exception:
         return "invalid"
 
+
 def is_valid_time(time_str):
     try:
         hour, minute = map(int, time_str.split(":"))
@@ -64,69 +65,63 @@ def is_valid_time(time_str):
     except Exception:
         return False
 
+
 def is_valid_email(email_str: str) -> bool:
     if not email_str:
         return False
     return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email_str))
-# ---------- Main Function ----------
+
+
+def missing_details(state: dict) -> list[str]:
+    missing = []
+    if not state["date"]:
+        missing.append("date")
+    if not state["time"]:
+        missing.append("time")
+    if not state["email"]:
+        missing.append("email")
+    return missing
+
 
 def collect_details(state: dict) -> dict:
-    logger.debug("collect_details function called")
-    
     past = False
-    # Ensure all required keys exist
     state.setdefault("bot_messages", [])
     state.setdefault("user_messages", [])
     state.setdefault("date", None)
     state.setdefault("time", None)
     state.setdefault("email", None)
-    
+
     user_message = state.get("user_messages", [])[-1] if state.get("user_messages") else ""
-    
-    # If no user message, wait for input
+
     if not user_message:
-        logger.debug(" No user message in collect_details")
-        # Ask for what we need
-        missing = []
-        if not state["date"]:
-            missing.append("date")
-        if not state["time"]:
-            missing.append("time")
-        if not state["email"]:
-            missing.append("email")
+        missing = missing_details(state)
         state["bot_messages"].append(
             f"Please provide the appointment {', '.join(missing)}."
         )
         state["awaiting_user_response"] = True
         return state
 
-    logger.debug(f"Processing user message in collect_details: '{user_message}'")
-    logger.debug(f"Current state - date: {state['date']}, time: {state['time']}, email: {state['email']}")
-
-    # If we already have all details, move to confirm_booking
     if state.get("date") and state.get("time") and state.get("email"):
-        logger.debug("All details already present, moving to confirm_booking")
         state["awaiting_user_response"] = False
         return state
 
-    # Check if this message is just an email (common case)
     if "@" in user_message and "." in user_message and " " not in user_message.strip():
-        logger.debug("Detected standalone email")
         email_candidate = user_message.strip()
         if is_valid_email(email_candidate):
             state["email"] = email_candidate
-            if state.get("date") and state.get("time") and state.get("email"):
-                logger.debug("All details complete with email, moving to confirm_booking")
-            state["awaiting_user_response"] = False
+            missing = missing_details(state)
+            if missing:
+                state["bot_messages"].append(
+                    f"Thanks, I have your email. I still need the appointment {', '.join(missing)}."
+                )
+                state["awaiting_user_response"] = True
+            else:
+                state["awaiting_user_response"] = False
         else:
-            # Still need more details
-            missing = []
-            if not state["date"]:
-                missing.append("date")
-            if not state["time"]:
-                missing.append("time")
+            missing = [item for item in missing_details(state) if item != "email"]
+            needed = f" and the appointment {', '.join(missing)}" if missing else ""
             state["bot_messages"].append(
-                f"Great! I have your email. I still need the appointment {', '.join(missing)}. Could you please provide that?"
+                f"That email doesn't look valid. Please provide a valid email address{needed}."
             )
             state["awaiting_user_response"] = True
         return state
@@ -134,9 +129,11 @@ def collect_details(state: dict) -> dict:
     extraction_chain = extraction_prompt | llm
 
     try:
-        raw_response = extraction_chain.invoke({"input": user_message, "today": TODAY})
+        raw_response = extraction_chain.invoke({
+            "input": user_message,
+            "today": datetime.now().strftime("%Y-%m-%d"),
+        })
 
-        # Handle potential None response
         if raw_response is None:
             state["bot_messages"].append("Sorry, I couldn't process your message. Please try again.")
             state["awaiting_user_response"] = True
@@ -145,9 +142,7 @@ def collect_details(state: dict) -> dict:
         raw_text = raw_response.content if hasattr(raw_response, "content") else raw_response
         if not isinstance(raw_text, str):
             raw_text = str(raw_text)
-        logger.debug(f"LLM response: {raw_text}")
 
-        # Extract JSON payload from the model output
         match = re.search(r"\{.*\}", raw_text, re.DOTALL)
         json_text = match.group(0) if match else raw_text
         details_dict = json.loads(json_text)
@@ -156,20 +151,18 @@ def collect_details(state: dict) -> dict:
         date = details.date if details.date else None
         time = details.time if details.time else None
         email = details.email if details.email else None
-    except (json.JSONDecodeError, TypeError, AttributeError) as e:
-        logger.debug(f"Error parsing response: {e}")
+    except (json.JSONDecodeError, TypeError, AttributeError):
         state["bot_messages"].append(
             "Sorry, I couldn't understand that. Could you please rephrase the date, time, and email?"
         )
         state["awaiting_user_response"] = True
         return state
     except Exception as e:
-        logger.debug(f"Error in collect_details: {e}")
+        logger.exception("Error in collect_details")
         state["bot_messages"].append("Sorry, I encountered an error. Please try again.")
         state["awaiting_user_response"] = True
         return state
 
-    # Update state only if not already filled
     if not state["date"] and date:
         state["date"] = date
     if not state["time"] and time:
@@ -177,9 +170,6 @@ def collect_details(state: dict) -> dict:
     if not state["email"] and email:
         state["email"] = email
 
-    logger.debug(f"After extraction - date: {state['date']}, time: {state['time']}, email: {state['email']}")
-
-    # Validate fields
     invalid = []
     too_far = False
 
@@ -216,13 +206,7 @@ def collect_details(state: dict) -> dict:
         state["awaiting_user_response"] = True
         return state
 
-    missing = []
-    if not state["date"]:
-        missing.append("date")
-    if not state["time"]:
-        missing.append("time")
-    if not state["email"]:
-        missing.append("email")
+    missing = missing_details(state)
 
     if missing:
         if invalid:
@@ -242,7 +226,5 @@ def collect_details(state: dict) -> dict:
         state["awaiting_user_response"] = True
         return state
 
-    # All details valid
-    logger.debug("All details valid, moving to confirm_booking")
     state["awaiting_user_response"] = False
     return state

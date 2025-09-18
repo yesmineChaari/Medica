@@ -1,6 +1,3 @@
-import logging
-logger = logging.getLogger(__name__)
-
 def route(state: dict) -> str:
     if state.get("date") and state.get("time") and state.get("email"):
         return "confirm_booking"

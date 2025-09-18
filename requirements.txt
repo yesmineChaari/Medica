@@ -1,4 +1,4 @@
-# ── LangChain ecosystem (1.x — all mutually compatible) ──────────────
+# LangChain
 langchain
 langchain-core
 langchain-community
@@ -7,50 +7,50 @@ langchain-huggingface
 langchain-qdrant
 langgraph
 
-# ── Vector database ───────────────────────────────────────────────────
-qdrant-client==1.14.3
-# ── Embeddings ────────────────────────────────────────────────────────
+# Vector database
+qdrant-client>=1.15.1,<2.0.0
+
+# Embeddings
 sentence-transformers
 transformers
-torch                # CPU; swap +cu121 suffix if you have a GPU
+torch
 tokenizers
 
-# ── RAG / ML ──────────────────────────────────────────────────────────
+# RAG / ML
 numpy
 scipy
 
-# ── Speech to text ────────────────────────────────────────────────────
+# Speech to text
 faster-whisper
 ctranslate2
 
-# ── Text to speech ────────────────────────────────────────────────────
+# Text to speech
 TTS
 
-# ── Audio I/O ─────────────────────────────────────────────────────────
+# Audio I/O
 sounddevice
 soundfile
 
-# ── Calendar / booking ────────────────────────────────────────────────
+# Calendar / booking
 caldav
 vobject
 
-# ── Streamlit UI ──────────────────────────────────────────────────────
+# Streamlit UI
 streamlit
 
-# ── Environment & config ──────────────────────────────────────────────
+# Environment & config
 requests
 urllib3
 python-dotenv
 pydantic
 
-# ── Observability ─────────────────────────────────────────────────────
+# Observability
 langfuse
 
-# ── Data processing ───────────────────────────────────────────────────
+# Data processing
 pandas
 tqdm
 
-# ── HTTP / async ──────────────────────────────────────────────────────
+# HTTP / async
 httpx
 aiohttp
-requests

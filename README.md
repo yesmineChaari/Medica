@@ -1,103 +1,103 @@
-# Medical Chatbot with RAG and Qdrant
+# Medica
 
-This project is a medical chatbot using Retrieval-Augmented Generation (RAG) with Qdrant vector database and BAAI/bge_large_en embeddings. It stores medical Q&A data for efficient search and response generation.
+Medica is a Streamlit medical assistant that combines retrieval-augmented medical Q&A, voice interaction, text-to-speech responses, and appointment booking in one workflow.
 
----
+The project is built to show how a healthcare assistant can move beyond a simple chatbot: users can ask medical questions, speak instead of typing, hear responses back, and book appointments through a connected calendar flow.
 
-## Features
+Medica is for informational and demonstration use. It does not replace professional medical advice, diagnosis, or treatment.
 
-- Uses BAAI/bge-large_en embedding model .
-- Stores embeddings and data in Qdrant Cloud vector database .
-- Retrieval augmented generation with LangChain and Ollama LLM .
-- Has an appointment booking feature .
-- Uses Radicale for appointment scheduling .
-- Fully open_source .
-- Easy to deploy and extend .
+## Highlights
 
----
+- Medical Q&A powered by RAG, using Qdrant to retrieve relevant medical knowledge before answering.
+- Voice-first interaction with explicit start and stop recording controls.
+- Whisper transcription for spoken questions.
+- Coqui TTS audio playback for assistant responses.
+- Conversation memory for more natural follow-up questions.
+- Appointment booking through Radicale/CalDAV.
+- Email notification support for booked appointments.
+- Environment-based configuration for local or hosted services.
+- Optional Langfuse tracing for observability.
+- Basic input safety checks before sending questions to the model.
 
-## Setup Instructions
+## How It Works
 
-### 1. Clone the repository
+For medical questions, Medica embeds the user query, retrieves relevant context from Qdrant, and sends the context, question, and recent chat history to the LLM through LangChain. This keeps answers grounded in the indexed medical data instead of relying only on the base model.
 
-```bash
-git clone https://github.com/yesmineChaari/Medical-Chatbot.git
-cd Medical-Chatbot
-```
+For voice questions, the user clicks **Ask by Voice** to start recording. Once recording starts, a **Stop Recording** button appears. The recorded audio is transcribed with Whisper, answered through the same RAG pipeline, and the response audio is generated with Coqui TTS.
 
-### 2. Install dependencies
+For appointment booking, Medica uses a separate conversational flow to collect appointment details, check availability through CalDAV, create the appointment, and send an email notification when configured.
+
+## What It Uses
+
+- Streamlit for the UI
+- Qdrant for vector search
+- LangChain with Ollama `llama3`
+- `BAAI/bge-large-en` embeddings by default
+- Whisper transcription for voice input
+- Coqui TTS for bot audio
+- Radicale/CalDAV for appointment booking
+- SMTP for appointment email notifications
+- Langfuse for optional tracing
+
+## Setup
+
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
-
 ```
 
-### 3.Configure environment variables
+Create a `.env` file in the project root:
 
-Create a .env file in the root directory to store your Qdrant API key and URL securely.
-
-Example .env file:
-QDRANT_API_KEY=your_qdrant_api_key_here
-
-QDRANT_URL=https://your-qdrant-cloud-url
-
-SMTP_SERVER=smtp.gmail.com
-
-SMTP_PORT=587
-
-SMTP_USERNAME=user.email@gmail.com
-
-SMTP_PASSWORD= **\*\*\***
-
-FROM_EMAIL=user.email@gmail.com
+```env
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY=
+EMBEDDING_MODEL_NAME=BAAI/bge-large-en
+QDRANT_COLLECTION_NAME=medical_qa_bge_large_en
 
 RADICALE_URL=http://localhost:5232/
-
 USERNAME=username
-
 PASSWORD=password
 
-### 4. Configuring the vector database
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=user.email@gmail.com
+SMTP_PASSWORD=your_app_password
+FROM_EMAIL=user.email@gmail.com
 
-Make sure Docker is installed and running.
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+LANGFUSE_HOST=http://localhost:3000
+```
 
-Create a Qdrant collection and start the service:
+Start Qdrant:
 
 ```bash
 docker run -d -p 6333:6333 -v qdrant_storage:/qdrant/storage qdrant/qdrant
 ```
 
-Run the qdrant_bge_large_en.py script to create and populate the vector database that will be used for RAG:
+Populate the vector collection if needed:
 
 ```bash
-python build_qa_vectors_BAAI_bge_large_en.py
+python tools/build_vectors/build_qa_vectors-BAAI-bge-large-en.py
 ```
 
-### 5. Installing and configuring Radicale and thunderbird
+Make sure Ollama has the model:
 
 ```bash
-python -m pip install --upgrade https://github.com/Kozea/Radicale/archive/master.tar.gz
+ollama pull llama3
+```
+
+Start Radicale for appointment booking:
+
+```bash
 python -m radicale --storage-filesystem-folder=~/radicale/collections --auth-type none
-
 ```
 
-Optionally, install Thunderbird or another CalDAV client to view your appointments.
-
-```bash
-install thunderbird
-```
-
-### 6.Running the application
-
-Start Qdrant and Radicale servers (if not running already):
-
-```bash
-docker run -d -p 6333:6333 -v qdrant_storage:/qdrant/storage qdrant/qdrant
- python -m radicale --storage-filesystem-folder=~/radicale/collections --auth-type none
-```
-
-Finally, launch the Streamlit app:
+Run the app:
 
 ```bash
 streamlit run streamlit_app.py
 ```
+
+Open the Streamlit URL, usually `http://localhost:8501`.

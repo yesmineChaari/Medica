@@ -1,23 +1,23 @@
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
 import logging
+
 logger = logging.getLogger(__name__)
 
 llm = OllamaLLM(model="llama3")
 
-# Prompt to classify user input intent
 intent_prompt = ChatPromptTemplate.from_messages([
     (
         "system",
         (
             "You are an intent classification assistant for an appointment booking chatbot.\n\n"
             "Classify the user's message as exactly one of the following intents:\n"
-            "1. GREETING – The user is greeting you.\n"
-            "2. APPOINTMENT_REQUEST – The user wants to book an appointment but gives NO specific date/time/email.\n"
-            "3. APPOINTMENT_DETAILS – The user provides specific date, time, or email info.\n"
-            "4. OTHER – Everything else.\n\n"
+            "1. GREETING - The user is greeting you.\n"
+            "2. APPOINTMENT_REQUEST - The user wants to book an appointment but gives NO specific date/time/email.\n"
+            "3. APPOINTMENT_DETAILS - The user provides specific date, time, or email info.\n"
+            "4. OTHER - Everything else.\n\n"
             "IMPORTANT RULE:\n"
-            "If the message contains ANY date, time, or email — even if it also includes a request to book — classify it as APPOINTMENT_DETAILS.\n"
+            "If the message contains ANY date, time, or email - even if it also includes a request to book - classify it as APPOINTMENT_DETAILS.\n"
             "Only classify as APPOINTMENT_REQUEST if NO date,time or email is present.\n"
             "Respond ONLY with the intent label.\n"
         )
@@ -51,113 +51,74 @@ response_prompt = ChatPromptTemplate.from_messages([
 ])
 
 
-def greet_user(state: dict) -> dict:
-    logger.debug("greet_user function called")
-    logger.debug(f"Input state type: {type(state)}")
-    logger.debug(f"Input state keys: {list(state.keys())}")
-    logger.debug(f"Input state user_messages: {state.get('user_messages', 'NOT_FOUND')}")
+INTENT_SYNONYMS = {
+    "APPOINTMENT_DETAILS": "APPOINTMENT_DETAILS",
+    "APPOINT_DETAILS": "APPOINTMENT_DETAILS",
+    "APPOINTMENT_REQUEST": "APPOINTMENT_REQUEST",
+    "REQUEST_APPOINTMENT": "APPOINTMENT_REQUEST",
+    "GREETING": "GREETING",
+    "OTHER": "OTHER",
+}
 
-    # Ensure all required keys exist
+
+def greet_user(state: dict) -> dict:
     state.setdefault("bot_messages", [])
     state.setdefault("greeting_sent", False)
     state.setdefault("awaiting_user_response", False)
     state.setdefault("last_user_intent", "")
     state.setdefault("user_messages", [])
 
-    logger.debug(f" After setdefault, user_messages: {state.get('user_messages', 'NOT_FOUND')}")
-
-    # If awaiting user response, don't process further
     if state.get("awaiting_user_response"):
-        logger.debug("Already awaiting user response, returning")
         return state
 
-    # Check if there's user messages to process
     if not state.get("user_messages"):
-        # No user messages yet, this is the initial state
-        logger.debug("No user messages, setting awaiting_user_response=True")
         state["awaiting_user_response"] = True
         return state
 
-    # Get the last user message
     user_messages = state.get("user_messages", [])
-    if not user_messages:
-        logger.debug("DEBUG: No last user message, setting awaiting_user_response=True")
-        state["awaiting_user_response"] = True
-        return state
-    
     user_message = user_messages[-1]
-    logger.debug(f"DEBUG: Processing user message: '{user_message}'")
 
     try:
-        # Classify intent
-        logger.debug("DEBUG: Creating prompt messages")
         intent_chain = intent_prompt | llm
         response = intent_chain.invoke({"input": user_message})
-        logger.debug(f"DEBUG: LLM response: {response}")
-        
-        # Handle potential None response
+
         if response is None:
-            logger.debug("DEBUG: LLM returned None")
             state["bot_messages"].append("Sorry, I couldn't process your message. Please try again.")
             state["awaiting_user_response"] = True
             return state
-            
-        logger.debug(f"DEBUG: Processing response: {response}")
-        INTENT_SYNONYMS = {
-            "APPOINTMENT_DETAILS": "APPOINTMENT_DETAILS",
-            "APPOINT_DETAILS": "APPOINTMENT_DETAILS",
-            "APPOINTMENT_REQUEST": "APPOINTMENT_REQUEST",
-            "REQUEST_APPOINTMENT": "APPOINTMENT_REQUEST",
-            "GREETING": "GREETING",
-            "OTHER": "OTHER"
-        }
 
         label = response.strip().upper()
         classification = INTENT_SYNONYMS.get(label, "OTHER")
-        logger.debug(f"DEBUG: Classification: {classification}")
 
         state["last_user_intent"] = classification
 
         if classification == "GREETING":
-            logger.debug("DEBUG: Adding greeting response")
             response_chain = response_prompt | llm
             response_msg = response_chain.invoke({"intent": classification, "message": user_message})
             state["bot_messages"].append(response_msg.strip())
             state["awaiting_user_response"] = True
         elif classification == "APPOINTMENT_REQUEST":
-            logger.debug("DEBUG: Adding appointment request response")
             response_chain = response_prompt | llm
             response_msg = response_chain.invoke({"intent": classification, "message": user_message})
             state["bot_messages"].append(response_msg.strip())
             state["awaiting_user_response"] = True
         elif classification == "APPOINTMENT_DETAILS":
-            logger.debug("DEBUG: User provided details, moving to collect_details")
-            # If user provided details, move to collect_details node
             state["awaiting_user_response"] = False
         elif classification == "OTHER":
-            logger.debug("DEBUG: Adding other response")
             state["bot_messages"].append(
                 "I can only help with booking appointments. Please tell me when you'd like to book and your email address."
             )
             state["awaiting_user_response"] = True
         else:
-            logger.debug("DEBUG: Adding default response")
             state["bot_messages"].append(
                 "I'm here to help with booking appointments. Please tell me when you'd like to book."
             )
             state["awaiting_user_response"] = True
-            
-        logger.debug("DEBUG: Function completed successfully")
-            
-    except Exception as e:
-        print(f"Error in greet_user: {e}")
-        import traceback
-        traceback.print_exc()
+
+    except Exception:
+        logger.exception("Error in greet_user")
         state["bot_messages"].append("Sorry, I encountered an error. Please try again.")
         state["awaiting_user_response"] = True
-    
+
     return state
-
-
-
 

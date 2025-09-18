@@ -8,35 +8,33 @@ from typing import List
 import logging
 import os
 from dotenv import load_dotenv
-load_dotenv()  
 
-print("API Key:", os.getenv("QDRANT_API_KEY"))
-# Configuration
+load_dotenv()
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
 csv_file = os.path.join(script_dir, "..", "..", "dataset", "combined_medical_QAs.csv")
 chunk_size = 100
 QDRANT_COLLECTION_NAME = "medical_qa"
 EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
 
-# Set Qdrant Cloud API key and URL
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")  
-QDRANT_URL = os.getenv("QDRANT_URL")  
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+QDRANT_URL = os.getenv("QDRANT_URL")
 
-# Initialize logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def initialize_qdrant():
     """Initialize Qdrant client and collection"""
     qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=60)
 
-    # Create collection if it doesn't exist
     if QDRANT_COLLECTION_NAME not in [c.name for c in qdrant.get_collections().collections]:
         qdrant.recreate_collection(
             collection_name=QDRANT_COLLECTION_NAME,
             vectors_config=VectorParams(size=1024, distance=Distance.COSINE)
         )
     return qdrant
+
 
 def initialize_embeddings():
     """Initialize BGE-M3 embedding model"""
@@ -46,6 +44,7 @@ def initialize_embeddings():
         encode_kwargs={'batch_size': 32}
     )
 
+
 def embed_texts(embeddings_model, texts: List[str]) -> List[List[float]]:
     """Embed a batch of texts using HuggingFace embeddings with query prefix"""
     texts = ["Represent this sentence for searching relevant passages: " + t for t in texts]
@@ -54,6 +53,7 @@ def embed_texts(embeddings_model, texts: List[str]) -> List[List[float]]:
     except Exception as e:
         logger.error(f"Embedding failed: {e}")
         raise
+
 
 def upsert_chunk(qdrant, embeddings_model, df_chunk: pd.DataFrame, offset: int):
     """Embed and upsert one chunk of the dataframe"""
@@ -84,6 +84,7 @@ def upsert_chunk(qdrant, embeddings_model, df_chunk: pd.DataFrame, offset: int):
         logger.error(f"Failed to process chunk: {e}")
         raise
 
+
 def main():
     qdrant = initialize_qdrant()
     embeddings_model = initialize_embeddings()
@@ -111,6 +112,7 @@ def main():
         logger.error(f"Fatal error: {e}")
     finally:
         logger.info(f"Successfully uploaded {total_processed} records to Qdrant!")
+
 
 if __name__ == "__main__":
     main()
